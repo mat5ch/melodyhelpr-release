@@ -26,6 +26,15 @@
  * ```
  */
 
-import './index.css';
+/* CSS imports */
+import './styles/index.css';
+import './styles/bootstrap.min.css';
+/* JS libs imports */
+import React from "react";
+import ReactDOM from "react-dom";
 
-console.log('👋 This message is being logged by "renderer.js", included via webpack');
+function MyApp() {
+    return <h1 className="text-center">Welcome to my App!</h1>;
+}
+
+ReactDOM.render(<MyApp />, document.getElementById("my-app"));
