@@ -8,6 +8,8 @@ import fs from 'fs';
 import os from 'os';
 import udp from 'dgram';
 import osc from 'osc-min';
+import { MusicVAE } from '@magenta/music/node/music_vae';
+import { NoteSequence, INoteSequence } from '@magenta/music/node/protobuf/index';
 
 interface MelodyhelprProps {
     title?: string,
@@ -15,9 +17,10 @@ interface MelodyhelprProps {
 
 interface MelodyhelprState {
     qpm: number,
-    divisions: number,
-    divisor: number,
+    bars: number,
     chords: string,
+    chordProgression: string[],
+    noteSequence: INoteSequence,
     notesCanBePlayed: boolean,
     temperature: number,
 }
@@ -26,6 +29,8 @@ const PORT = 7890;
 const HOME_DIR = os.homedir();
 const TEMP_DIR = HOME_DIR.concat('/ardour_electron');
 const CONN_FILE = '/connected.txt';
+// standard chord progression
+const CHORDS = ["C", "G", "Am", "F", "C", "G", "Am", "F"];
 
 class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
     
@@ -34,13 +39,15 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
         if (props.title) document.title = props.title;
         this.state = {
             qpm: 120,
-            divisions: 4,
-            divisor: 4,
+            bars: 2,
             chords: 'presets',
+            chordProgression: CHORDS,
+            noteSequence: null,
             notesCanBePlayed: false,
             temperature: 0.7,
         };
         this.openSocket = this.openSocket.bind(this);
+        this.generateSequence = this.generateSequence.bind(this);
     }
 
     componentDidMount() {
@@ -54,15 +61,14 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
                 if (osc.fromBuffer(msg)['address'] === 'SEQ_INFO') {
                     this.setState({
                         qpm: osc.fromBuffer(msg)['args'][0].value,  
-                        divisions: osc.fromBuffer(msg)['args'][1].value,
-                        divisor: osc.fromBuffer(msg)['args'][2].value,
                         chords: 'presets',
-                        notesCanBePlayed: false
+                        notesCanBePlayed: false,
                     });
                     // check if boolean flag (exp_chords) in Ardour has been set
                     if (osc.fromBuffer(msg)['args'][3].value === true) {  
+                        
                     }
-                    
+                    this.generateSequence();
                 }
                 // establish connection with Ardour (basic fs check for now)
                 if (osc.fromBuffer(msg)['address'] === 'CONNECT') {
@@ -77,6 +83,47 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
             }
         });
         SOCK.bind(PORT);
+    }
+
+    async generateSequence() {
+        // create and init magenta model
+        const musicVAE = new MusicVAE(
+          "https://storage.googleapis.com/magentadata/js/checkpoints/music_vae/mel_chords"
+        );
+        await musicVAE.initialize();
+        /* note:
+         * the length of the sequence depends on the checkpoint + config file passed to the constructor of the model,
+         * steps per quarter can only be 4 (for now!)
+         */
+        const sample = await musicVAE.sample(
+          1,
+          this.state.temperature,
+          this.state.chordProgression.slice(0, 2),
+          this.state.qpm
+        );
+        // grab first element of returned inotesequence array
+        let sequence = sample[0];
+        // make sure that notes are in range (48 - 83) for the improvRNN model (see doubleSequence function)
+        if (sequence.notes) {
+            const notes: NoteSequence.INote[] = sequence.notes.map(noteObj => {
+                if (noteObj.pitch) {
+                if (noteObj.pitch < 48) {
+                    // Math.ceil = return next larger integer no
+                    noteObj.pitch += Math.ceil((48 - noteObj.pitch) / 12) * 12;
+                } else if (noteObj.pitch > 83) {
+                    noteObj.pitch -= Math.ceil((noteObj.pitch - 83) / 12) * 12;
+                }
+                }
+                return noteObj;
+            });
+            sequence.notes = notes;
+        }
+    
+        this.setState({
+          noteSequence: sequence,
+          notesCanBePlayed: true,
+        });
+        musicVAE.dispose();
     }
 
     render() {
@@ -95,12 +142,11 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
                     </div>
                             <div className='card-body'>
                                 <p id='status-bar'>
-                                {`bpm: ${this.state.qpm.toFixed(1)} | time: 4/4 | bars: ${4} 
-                                ${this.state.divisor === 3 ? "| triplets" : ""} 
+                                {`bpm: ${this.state.qpm.toFixed(1)} | time: 4/4 | bars: ${this.state.bars}  
                                 | randomness: ${this.state.temperature}`}
                         </p>
                                 <div id='note-player'>
-
+                                    
                                 </div>
                                 <div id='chord-list'>
 
