@@ -10,6 +10,7 @@ import udp from 'dgram';
 import osc from 'osc-min';
 import { MusicVAE } from '@magenta/music/node/music_vae';
 import { NoteSequence, INoteSequence } from '@magenta/music/node/protobuf/index';
+import NotePlayer from './noteplayer';
 
 interface MelodyhelprProps {
     title?: string,
@@ -38,13 +39,13 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
         super(props);
         if (props.title) document.title = props.title;
         this.state = {
-            qpm: 120,
+            qpm: 120, // -> bpm
             bars: 2,
             chords: 'presets',
             chordProgression: CHORDS,
-            noteSequence: null,
+            noteSequence: {},
             notesCanBePlayed: false,
-            temperature: 0.7,
+            temperature: 0.7, // randomness
         };
         this.openSocket = this.openSocket.bind(this);
         this.generateSequence = this.generateSequence.bind(this);
@@ -93,17 +94,18 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
         await musicVAE.initialize();
         /* note:
          * the length of the sequence depends on the checkpoint + config file passed to the constructor of the model,
-         * steps per quarter can only be 4 (for now!)
+         * steps per quarter set to 4 (for now!)
          */
         const sample = await musicVAE.sample(
-          1,
-          this.state.temperature,
+          1, // sample amount
+          this.state.temperature, 
           this.state.chordProgression.slice(0, 2),
+          4, // steps per quarter
           this.state.qpm
         );
         // grab first element of returned inotesequence array
         let sequence = sample[0];
-        // make sure that notes are in range (48 - 83) for the improvRNN model (see doubleSequence function)
+        // make sure that notes are in range (48 - 83) for the improvRNN model (see doubleSequence function (TODO))
         if (sequence.notes) {
             const notes: NoteSequence.INote[] = sequence.notes.map(noteObj => {
                 if (noteObj.pitch) {
@@ -118,6 +120,7 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
             });
             sequence.notes = notes;
         }
+        sequence.tempos[0].time = 0; // TODO: check why this time info is not set automatically!
     
         this.setState({
           noteSequence: sequence,
@@ -138,7 +141,7 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
                     <div className='col'>
                         <div className='card text-center'>
                             <div className='card-title'>
-                                Waiting for Ardour to connect.
+                                <p id='user-info'>Waiting for Ardour to connect.</p>
                     </div>
                             <div className='card-body'>
                                 <p id='status-bar'>
@@ -146,7 +149,11 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
                                 | randomness: ${this.state.temperature}`}
                         </p>
                                 <div id='note-player'>
-                                    
+                                <NotePlayer
+                                    play={this.state.notesCanBePlayed}
+                                    noteSequence={this.state.noteSequence}
+                                >
+                                </NotePlayer>    
                                 </div>
                                 <div id='chord-list'>
 
