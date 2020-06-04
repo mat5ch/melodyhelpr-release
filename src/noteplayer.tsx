@@ -3,13 +3,13 @@ import { Player, sequences } from '@magenta/music/node/core';
 import { INoteSequence, NoteSequence } from '@magenta/music/node/protobuf/index';
 
 interface NotePlayerProps {
-  noteSequence: INoteSequence,
-  play: boolean,
+  noteSequence: INoteSequence;
+  play: boolean;
 }
 
 interface NotePlayerState {
-  isPlaying: boolean,
-  activeNote: NoteSequence.INote,
+  isPlaying: boolean;
+  activeNote: NoteSequence.INote;
 }
 
 // values according to min/max pitches accepted by improvRNN model (see in app.tsx)

@@ -13,17 +13,17 @@ import { NoteSequence, INoteSequence } from '@magenta/music/node/protobuf/index'
 import NotePlayer from './noteplayer';
 
 interface MelodyhelprProps {
-    title?: string,
+    title?: string;
 }
 
 interface MelodyhelprState {
-    qpm: number,
-    bars: number,
-    chords: string,
-    chordProgression: string[],
-    noteSequence: INoteSequence,
-    notesCanBePlayed: boolean,
-    temperature: number,
+    qpm: number;
+    bars: number;
+    chords: string;
+    chordProgression: string[];
+    noteSequence: INoteSequence;
+    notesCanBePlayed: boolean;
+    temperature: number;
 }
 
 const PORT = 7890;
@@ -31,10 +31,9 @@ const HOME_DIR = os.homedir();
 const TEMP_DIR = HOME_DIR.concat('/ardour_electron');
 const CONN_FILE = '/connected.txt';
 // standard chord progression
-const CHORDS = ["C", "G", "Am", "F", "C", "G", "Am", "F"];
+const CHORDS = ['C', 'G', 'Am', 'F', 'C', 'G', 'Am', 'F'];
 
 class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
-    
     constructor(props: MelodyhelprProps) {
         super(props);
         if (props.title) document.title = props.title;
@@ -109,19 +108,19 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
         if (sequence.notes) {
             const notes: NoteSequence.INote[] = sequence.notes.map(noteObj => {
                 if (noteObj.pitch) {
-                if (noteObj.pitch < 48) {
-                    // Math.ceil = return next larger integer no
-                    noteObj.pitch += Math.ceil((48 - noteObj.pitch) / 12) * 12;
-                } else if (noteObj.pitch > 83) {
-                    noteObj.pitch -= Math.ceil((noteObj.pitch - 83) / 12) * 12;
-                }
+                    if (noteObj.pitch < 48) {
+                        // Math.ceil = return next larger integer no
+                        noteObj.pitch += Math.ceil((48 - noteObj.pitch) / 12) * 12;
+                    } else if (noteObj.pitch > 83) {
+                        noteObj.pitch -= Math.ceil((noteObj.pitch - 83) / 12) * 12;
+                    }
                 }
                 return noteObj;
             });
             sequence.notes = notes;
         }
         sequence.tempos[0].time = 0; // TODO: check why this time info is not set automatically!
-    
+        
         this.setState({
           noteSequence: sequence,
           notesCanBePlayed: true,
