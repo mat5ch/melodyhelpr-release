@@ -8,6 +8,7 @@ import fs from 'fs';
 import os from 'os';
 import udp from 'dgram';
 import osc from 'osc-min';
+import { MusicRNN } from '@magenta/music/node/music_rnn';
 import { MusicVAE } from '@magenta/music/node/music_vae';
 import { NoteSequence, INoteSequence } from '@magenta/music/node/protobuf/index';
 import NotePlayer from './noteplayer';
@@ -23,6 +24,8 @@ interface MelodyhelprProps {
 
 interface MelodyhelprState {
     qpm: number;
+    divisions: number;
+    divisor: number;
     bars: number;
     chords: string;
     chordProgression: string[];
@@ -44,12 +47,14 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
         if (props.title) document.title = props.title;
         this.state = {
             qpm: 120, // -> bpm
+            divisions: 4,
+            divisor: 4,
             bars: 2,
             chords: 'presets',
             chordProgression: CHORDS,
             noteSequence: {},
             notesCanBePlayed: false,
-            temperature: 0.7, // randomness
+            temperature: 1.0, // randomness
         };
         this.openSocket = this.openSocket.bind(this);
         this.transferToArdour = this.transferToArdour.bind(this);
@@ -67,12 +72,13 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
                 if (osc.fromBuffer(msg)['address'] === 'SEQ_INFO') {
                     this.setState({
                         qpm: osc.fromBuffer(msg)['args'][0].value,  
+                        divisions: osc.fromBuffer(msg)["args"][1].value,
+                        divisor: osc.fromBuffer(msg)["args"][2].value,
                         chords: 'presets',
                         notesCanBePlayed: false,
                     });
-                    // check if boolean flag (exp_chords) in Ardour has been set
-                    if (osc.fromBuffer(msg)['args'][3].value === true) {  
-                        
+                    // TODO: check if boolean flag (exp_chords) in Ardour has been set
+                    if (osc.fromBuffer(msg)['args'][3].value === true) {   
                     }
                     this.generateSequence();
                 }
@@ -92,46 +98,34 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
     }
 
     async generateSequence() {
-        // create and init magenta model
-        const musicVAE = new MusicVAE(
-          "https://storage.googleapis.com/magentadata/js/checkpoints/music_vae/mel_chords"
-        );
-        await musicVAE.initialize();
-        /* note:
-         * the length of the sequence depends on the checkpoint + config file passed to the constructor of the model,
-         * steps per quarter set to 4 (for now!)
-         */
-        const sample = await musicVAE.sample(
-          1, // sample amount
-          this.state.temperature, 
-          this.state.chordProgression.slice(0, 2),
-          4, // steps per quarter
-          this.state.qpm
-        );
-        // grab first element of returned inotesequence array
-        let sequence = sample[0];
-        // make sure that notes are in range (48 - 83) for the improvRNN model (see doubleSequence function (TODO))
-        if (sequence.notes) {
-            const notes: NoteSequence.INote[] = sequence.notes.map(noteObj => {
-                if (noteObj.pitch) {
-                    if (noteObj.pitch < 48) {
-                        // Math.ceil = return next larger integer no
-                        noteObj.pitch += Math.ceil((48 - noteObj.pitch) / 12) * 12;
-                    } else if (noteObj.pitch > 83) {
-                        noteObj.pitch -= Math.ceil((noteObj.pitch - 83) / 12) * 12;
-                    }
-                }
-                return noteObj;
-            });
-            sequence.notes = notes;
+        /**
+         * create empty note sequence as a starter
+         */ 
+        // make sure that the sequence has the adequate length
+        const totalQuantizedSteps = 32 * (this.state.divisions/this.state.divisor); 
+        const initSeq: INoteSequence = {
+            quantizationInfo: {stepsPerQuarter: 4}, // steps per quarter set to 4 for now
+            totalQuantizedSteps: totalQuantizedSteps, // use 32 steps = 2 bars for now
+            notes: [],
         }
-        sequence.tempos[0].time = 0; // TODO: check why this time info is not set automatically!
+        
+        // create and init magenta model
+        const improvRNN = new MusicRNN("https://storage.googleapis.com/magentadata/js/checkpoints/music_rnn/chord_pitches_improv");
+        const sequence = 
+            await improvRNN
+                .initialize()
+                .then(() => improvRNN.continueSequence(
+                    initSeq,
+                    totalQuantizedSteps,
+                    this.state.temperature,
+                    ['C', 'Am'],
+                ));
         
         this.setState({
           noteSequence: sequence,
           notesCanBePlayed: true,
         });
-        musicVAE.dispose();
+        improvRNN.dispose();
     }
 
     transferToArdour() {
@@ -141,7 +135,8 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
             return note;
         });
         this.state.noteSequence.notes = notes;
-        
+        this.state.noteSequence.timeSignatures.push({time: 0, numerator: this.state.divisions, denominator: this.state.divisor});
+
         const midi = sequenceProtoToMidi(this.state.noteSequence);
         fs.writeFileSync(tmpDir.concat(melodyFile), midi);
     }
@@ -162,7 +157,7 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
                     </div>
                             <div className='card-body'>
                                 <p id='status-bar'>
-                                {`bpm: ${this.state.qpm.toFixed(1)} | time: 4/4 | bars: ${this.state.bars}  
+                                {`bpm: ${this.state.qpm.toFixed(1)} | time: ${this.state.divisions}/${this.state.divisor} | bars: ${this.state.bars}  
                                 | randomness: ${this.state.temperature}`}
                         </p>
                                 <div id='note-player'>
