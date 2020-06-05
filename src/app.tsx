@@ -9,10 +9,9 @@ import os from 'os';
 import udp from 'dgram';
 import osc from 'osc-min';
 import { MusicRNN } from '@magenta/music/node/music_rnn';
-import { MusicVAE } from '@magenta/music/node/music_vae';
-import { NoteSequence, INoteSequence } from '@magenta/music/node/protobuf/index';
+import { INoteSequence } from '@magenta/music/node/protobuf/index';
 import NotePlayer from './noteplayer';
-import { sequenceProtoToMidi } from '@magenta/music/node/core';
+import { sequenceProtoToMidi, sequences } from '@magenta/music/node/core';
 
 const homeDir = os.homedir();
 const tmpDir = homeDir.concat('/ardour_electron');
@@ -27,6 +26,7 @@ interface MelodyhelprState {
     divisions: number;
     divisor: number;
     bars: number;
+    stepsPerBar: number; 
     chords: string;
     chordProgression: string[];
     noteSequence: INoteSequence;
@@ -42,6 +42,7 @@ const CONN_FILE = '/connected.txt';
 const CHORDS = ['C', 'G', 'Am', 'F', 'C', 'G', 'Am', 'F'];
 
 class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
+    model: MusicRNN | undefined;
     constructor(props: MelodyhelprProps) {
         super(props);
         if (props.title) document.title = props.title;
@@ -50,21 +51,25 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
             divisions: 4,
             divisor: 4,
             bars: 2,
+            stepsPerBar: 16, // => 4 quarters a 4 steps
             chords: 'presets',
             chordProgression: CHORDS,
             noteSequence: {},
             notesCanBePlayed: false,
             temperature: 1.0, // randomness
         };
+        this.model = undefined;
         this.openSocket = this.openSocket.bind(this);
-        this.transferToArdour = this.transferToArdour.bind(this);
         this.generateSequence = this.generateSequence.bind(this);
+        this.doubleSequence = this.doubleSequence.bind(this);
+        this.halveSequence = this.halveSequence.bind(this);
+        this.transferToArdour = this.transferToArdour.bind(this);
     }
 
     componentDidMount() {
         this.openSocket();
     }
-
+    
     openSocket() {
         const SOCK = udp.createSocket('udp4', (msg, rinfo) => {
             try {
@@ -102,7 +107,7 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
          * create empty note sequence as a starter
          */ 
         // make sure that the sequence has the adequate length
-        const totalQuantizedSteps = 32 * (this.state.divisions/this.state.divisor); 
+        const totalQuantizedSteps = (this.state.bars * this.state.stepsPerBar) * (this.state.divisions/this.state.divisor); 
         const initSeq: INoteSequence = {
             quantizationInfo: {stepsPerQuarter: 4}, // steps per quarter set to 4 for now
             totalQuantizedSteps: totalQuantizedSteps, // use 32 steps = 2 bars for now
@@ -110,22 +115,62 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
         }
         
         // create and init magenta model
-        const improvRNN = new MusicRNN("https://storage.googleapis.com/magentadata/js/checkpoints/music_rnn/chord_pitches_improv");
+        this.model = new MusicRNN("https://storage.googleapis.com/magentadata/js/checkpoints/music_rnn/chord_pitches_improv");
         const sequence = 
-            await improvRNN
+            await this.model
                 .initialize()
-                .then(() => improvRNN.continueSequence(
+                .then(() => this.model.continueSequence(
                     initSeq,
                     totalQuantizedSteps,
                     this.state.temperature,
-                    ['C', 'Am'],
+                    this.state.chordProgression.slice(0, 2),
                 ));
         
         this.setState({
           noteSequence: sequence,
           notesCanBePlayed: true,
         });
-        improvRNN.dispose();
+        // this.model.dispose(); // TODO: check at which point model should be disposed
+    }
+
+    async doubleSequence() {
+        const outputLength = this.state.bars * this.state.stepsPerBar;
+
+        const continuation = await this.model.continueSequence(
+            this.state.noteSequence,
+            outputLength,
+            this.state.temperature,
+            this.state.chordProgression.slice(
+            this.state.bars,
+            this.state.bars * 2
+            )
+        );
+        const outputSequence = sequences.concatenate([
+                this.state.noteSequence,
+                continuation
+        ]); 
+        
+        this.setState(prevState => {
+            return {
+                noteSequence: outputSequence,
+                notesCanBePlayed: true,
+                bars: prevState.bars * 2, 
+            };
+        });      
+    }
+
+    halveSequence() {
+        const halvedSequence = sequences.split(
+            this.state.noteSequence,
+            (this.state.stepsPerBar * this.state.bars) / 2
+        );
+
+        this.setState(prevState => {
+            return {
+              noteSequence: halvedSequence[0],
+              bars: prevState.bars / 2
+            };
+        });
     }
 
     transferToArdour() {
@@ -176,8 +221,8 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
                                     <button className='btn btn-outline-secondary' onClick={this.transferToArdour}>Transfer</button>
                                 </div>
                                 <div className='footer-right d-flex'>
-                                    <button className='btn btn-outline-secondary'>:2</button>
-                                    <button className='btn btn-outline-secondary'>x2</button>
+                                    <button className='btn btn-outline-secondary' disabled={this.state.bars === 2} onClick={this.halveSequence}>:2</button>
+                                    <button className='btn btn-outline-secondary' disabled={this.state.bars === 8} onClick={this.doubleSequence}>x2</button>
                                     <button className='btn btn-outline-secondary'>
                                         <svg className='bi bi-shuffle' width='1em' height='1em' viewBox='0 0 16 16' fill='currentColor' xmlns='http://www.w3.org/2000/svg'>
                                           <path fillRule='evenodd' d='M12.646 1.146a.5.5 0 0 1 .708 0l2.5 2.5a.5.5 0 0 1 0 .708l-2.5 2.5a.5.5 0 0 1-.708-.708L14.793 4l-2.147-2.146a.5.5 0 0 1 0-.708zm0 8a.5.5 0 0 1 .708 0l2.5 2.5a.5.5 0 0 1 0 .708l-2.5 2.5a.5.5 0 0 1-.708-.708L14.793 12l-2.147-2.146a.5.5 0 0 1 0-.708z' />

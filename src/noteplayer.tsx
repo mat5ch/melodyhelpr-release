@@ -88,7 +88,7 @@ class NotePlayer extends React.Component<NotePlayerProps, NotePlayerState> {
               key={id}
               x={`${note.quantizedStartStep * noteWidth}%`}
               y={(this.canvasHeight - this.noteHeight) - ((note.pitch! - MIN_NOTE_PITCH) * this.noteHeight)}
-              width={(note.quantizedEndStep! - note.quantizedStartStep!) * (this.noteHeight - 1)}
+              width={(note.quantizedEndStep! - note.quantizedStartStep!) * noteWidth * 5}
               height={this.noteHeight}
               stroke={'#555'}
               strokeWidth={'2'}
