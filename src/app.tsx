@@ -11,6 +11,11 @@ import osc from 'osc-min';
 import { MusicVAE } from '@magenta/music/node/music_vae';
 import { NoteSequence, INoteSequence } from '@magenta/music/node/protobuf/index';
 import NotePlayer from './noteplayer';
+import { sequenceProtoToMidi } from '@magenta/music/node/core';
+
+const homeDir = os.homedir();
+const tmpDir = homeDir.concat('/ardour_electron');
+const melodyFile = "/melody.mid";
 
 interface MelodyhelprProps {
     title?: string;
@@ -47,6 +52,7 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
             temperature: 0.7, // randomness
         };
         this.openSocket = this.openSocket.bind(this);
+        this.transferToArdour = this.transferToArdour.bind(this);
         this.generateSequence = this.generateSequence.bind(this);
     }
 
@@ -128,6 +134,18 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
         musicVAE.dispose();
     }
 
+    transferToArdour() {
+        // explicitely set a velocity for all notes in the sequence, otherwise midi file does not contain any notes
+        const notes = this.state.noteSequence.notes.map(note => {
+            note.velocity = 80;
+            return note;
+        });
+        this.state.noteSequence.notes = notes;
+        
+        const midi = sequenceProtoToMidi(this.state.noteSequence);
+        fs.writeFileSync(tmpDir.concat(melodyFile), midi);
+    }
+
     render() {
         return (
             <div className='container'>
@@ -160,7 +178,7 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
                             </div>
                             <div className='card-footer d-flex'>
                                 <div className='footer-left'>
-                                    <button className='btn btn-outline-secondary'>Transfer</button>
+                                    <button className='btn btn-outline-secondary' onClick={this.transferToArdour}>Transfer</button>
                                 </div>
                                 <div className='footer-right d-flex'>
                                     <button className='btn btn-outline-secondary'>:2</button>
