@@ -107,9 +107,16 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
          * create empty note sequence as a starter
          */ 
         // make sure that the sequence has the adequate length
-        const totalQuantizedSteps = (this.state.bars * this.state.stepsPerBar) * (this.state.divisions/this.state.divisor); 
+        let stepsPerQuarter = 4;
+        let stepsPerBar = this.state.stepsPerBar;
+        let totalQuantizedSteps = (this.state.bars * stepsPerBar) * (this.state.divisions/this.state.divisor); 
+        if (this.state.divisor === 3) {
+            stepsPerQuarter = 3;
+            stepsPerBar = this.state.divisions * (4/3) * stepsPerQuarter; // calc from fourths to thirds
+            totalQuantizedSteps = stepsPerBar * this.state.bars; 
+        }
         const initSeq: INoteSequence = {
-            quantizationInfo: {stepsPerQuarter: 4}, // steps per quarter set to 4 for now
+            quantizationInfo: {stepsPerQuarter: stepsPerQuarter}, // steps per quarter set to 4 for now
             totalQuantizedSteps: totalQuantizedSteps, // use 32 steps = 2 bars for now
             notes: [],
         }
@@ -129,6 +136,7 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
         this.setState({
           noteSequence: sequence,
           notesCanBePlayed: true,
+          stepsPerBar: stepsPerBar, 
         });
         // this.model.dispose(); // TODO: check at which point model should be disposed
     }
@@ -146,8 +154,8 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
             )
         );
         const outputSequence = sequences.concatenate([
-                this.state.noteSequence,
-                continuation
+            this.state.noteSequence,
+            continuation
         ]); 
         
         this.setState(prevState => {
