@@ -168,14 +168,15 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
     }
 
     halveSequence() {
-        const halvedSequence = sequences.split(
+        const halvedSequence = sequences.trim(
             this.state.noteSequence,
+            0,
             (this.state.stepsPerBar * this.state.bars) / 2
         );
 
         this.setState(prevState => {
             return {
-              noteSequence: halvedSequence[0],
+              noteSequence: halvedSequence,
               bars: prevState.bars / 2
             };
         });
@@ -205,9 +206,8 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
                 <div className='row'>
                     <div className='col'>
                         <div className='card text-center'>
-                            <div className='card-title'>
-                                <p id='user-info'>Waiting for Ardour to connect.</p>
-                    </div>
+                            <div className='card-title'> 
+                            </div>
                             <div className='card-body'>
                                 <p id='status-bar'>
                                 {`bpm: ${this.state.qpm.toFixed(1)} | time: ${this.state.divisions}/${this.state.divisor} | bars: ${this.state.bars}  
