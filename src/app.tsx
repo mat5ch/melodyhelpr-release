@@ -12,6 +12,7 @@ import { MusicRNN } from '@magenta/music/node/music_rnn';
 import { INoteSequence } from '@magenta/music/node/protobuf/index';
 import NotePlayer from './noteplayer';
 import { sequenceProtoToMidi, sequences } from '@magenta/music/node/core';
+import ChordView from './chordview';
 
 const homeDir = os.homedir();
 const tmpDir = homeDir.concat('/ardour_electron');
@@ -231,7 +232,7 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
                                 </NotePlayer>    
                                 </div>
                                 <div id='chord-list'>
-
+                                <ChordView chords={this.state.chordProgression.slice(0, this.state.bars)}></ChordView>
                                 </div>
                             </div>
                             <div id='button-area' className='card-footer d-flex justify-content-between'>
