@@ -32,6 +32,7 @@ interface MelodyhelprState {
     chordProgression: string[];
     noteSequence: INoteSequence;
     notesCanBePlayed: boolean;
+    loading: boolean;
     temperature: number;
 }
 
@@ -57,6 +58,7 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
             chordProgression: CHORDS,
             noteSequence: {},
             notesCanBePlayed: false,
+            loading: false,
             temperature: 1.0, // randomness
         };
         this.model = undefined;
@@ -82,12 +84,12 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
                         divisions: osc.fromBuffer(msg)["args"][1].value,
                         divisor: osc.fromBuffer(msg)["args"][2].value,
                         chords: 'presets',
-                        notesCanBePlayed: false,
                     });
                     // TODO: check if boolean flag (exp_chords) in Ardour has been set
                     if (osc.fromBuffer(msg)['args'][3].value === true) {   
                     }
-                    this.generateSequence();
+                    // do not automatically create a new sequence when script in Ardour is run 
+                    // this.generateSequence();  
                 }
                 // establish connection with Ardour (basic fs check for now)
                 if (osc.fromBuffer(msg)['address'] === 'CONNECT') {
@@ -105,6 +107,9 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
     }
 
     async generateSequence() {
+        this.setState({
+            loading: true
+        });
         /**
          * create empty note sequence as a starter
          */ 
@@ -139,6 +144,7 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
           noteSequence: sequence,
           notesCanBePlayed: true,
           stepsPerBar: stepsPerBar, 
+          loading: false,
         });
         // this.model.dispose(); // TODO: check at which point model should be disposed
     }
@@ -150,6 +156,9 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
     }
 
     async doubleSequence() {
+        this.setState({
+            loading: true
+        });
         const outputLength = this.state.bars * this.state.stepsPerBar;
 
         const continuation = await this.model.continueSequence(
@@ -169,13 +178,17 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
         this.setState(prevState => {
             return {
                 noteSequence: outputSequence,
-                notesCanBePlayed: true,
                 bars: prevState.bars * 2, 
+                loading: false,
             };
         });      
     }
 
     halveSequence() {
+        this.setState({
+            loading: true
+        });
+
         const halvedSequence = sequences.trim(
             this.state.noteSequence,
             0,
@@ -185,7 +198,8 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
         this.setState(prevState => {
             return {
               noteSequence: halvedSequence,
-              bars: prevState.bars / 2
+              bars: prevState.bars / 2,
+              loading: false,
             };
         });
     }
@@ -237,16 +251,16 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
                             </div>
                             <div id='button-area' className='card-footer d-flex justify-content-between'>
                                 <div className='footer-left d-flex'>
-                                <button className='btn btn-outline-secondary' onClick={this.generateSequence}>
+                                    <button className='btn btn-outline-secondary' onClick={this.generateSequence} disabled={this.state.loading}>
                                         <svg id='lightning-icon' className='bi bi-lightning-fill' width='1.5em' height='1.5em' viewBox='0 0 16 16' fill='currentColor' xmlns='http://www.w3.org/2000/svg'>
                                             <path fillRule='evenodd' d='M11.251.068a.5.5 0 0 1 .227.58L9.677 6.5H13a.5.5 0 0 1 .364.843l-8 8.5a.5.5 0 0 1-.842-.49L6.323 9.5H3a.5.5 0 0 1-.364-.843l8-8.5a.5.5 0 0 1 .615-.09z'/>
                                         </svg>
                                     </button>
-                                    <button className='btn btn-outline-secondary' disabled={this.state.bars === 2} onClick={this.halveSequence}>:2</button>
-                                    <button className='btn btn-outline-secondary' disabled={this.state.bars === 8} onClick={this.doubleSequence}>x2</button>
+                                    <button className='btn btn-outline-secondary' disabled={this.state.loading || this.state.bars === 2} onClick={this.halveSequence}>:2</button>
+                                    <button className='btn btn-outline-secondary' disabled={this.state.loading || !this.state.notesCanBePlayed || this.state.bars === 8} onClick={this.doubleSequence}>x2</button>
                                 </div>
                                 <div className='footer-right d-flex'>
-                                    <button className='btn btn-outline-secondary' onClick={this.transferToArdour}>Transfer</button> 
+                                    <button className='btn btn-outline-secondary' onClick={this.transferToArdour} disabled={this.state.loading}>Transfer</button> 
                                 </div>
                             </div>
                         </div>
