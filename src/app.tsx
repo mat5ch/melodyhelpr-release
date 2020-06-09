@@ -9,14 +9,22 @@ import os from 'os';
 import udp from 'dgram';
 import osc from 'osc-min';
 import { MusicRNN } from '@magenta/music/node/music_rnn';
-import { INoteSequence } from '@magenta/music/node/protobuf/index';
+import { INoteSequence, NoteSequence } from '@magenta/music/node/protobuf/index';
+import { midiToSequenceProto, sequenceProtoToMidi, sequences, constants } from '@magenta/music/node/core';
+import { Midi } from '@tonejs/midi';
+import { Note } from 'tonal';
+import { chord } from 'tonal-detect';
 import NotePlayer from './noteplayer';
-import { sequenceProtoToMidi, sequences } from '@magenta/music/node/core';
 import ChordView from './chordview';
 
-const homeDir = os.homedir();
-const tmpDir = homeDir.concat('/ardour_electron');
-const melodyFile = "/melody.mid";
+const PORT = 7890;
+const HOME_DIR = os.homedir();
+const TEMP_DIR = HOME_DIR.concat('/ardour_electron');
+const CONN_FILE = '/connected.txt';
+const MELODY_FILE = '/melody.mid';
+const CHORDS_FILE_ARDOUR = "/chords.mid";
+// standard chord progression
+const CHORDS = ['C', 'G', 'Am', 'F', 'C', 'G', 'Am', 'F'];
 
 interface MelodyhelprProps {
     title?: string;
@@ -35,13 +43,6 @@ interface MelodyhelprState {
     loading: boolean;
     temperature: number;
 }
-
-const PORT = 7890;
-const HOME_DIR = os.homedir();
-const TEMP_DIR = HOME_DIR.concat('/ardour_electron');
-const CONN_FILE = '/connected.txt';
-// standard chord progression
-const CHORDS = ['C', 'G', 'Am', 'F', 'C', 'G', 'Am', 'F'];
 
 class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
     model: MusicRNN | undefined;
@@ -63,13 +64,15 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
         };
         this.model = undefined;
         this.openSocket = this.openSocket.bind(this);
+        this.initSequence = this.initSequence.bind(this);
+        this.importChords = this.importChords.bind(this);
         this.generateSequence = this.generateSequence.bind(this);
         this.changeTemp = this.changeTemp.bind(this);
         this.doubleSequence = this.doubleSequence.bind(this);
         this.halveSequence = this.halveSequence.bind(this);
         this.transferToArdour = this.transferToArdour.bind(this);
     }
-
+    
     componentDidMount() {
         this.openSocket();
     }
@@ -79,17 +82,18 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
             try {
                 // handle messages sent from Ardour (destructering of incoming msgs)
                 if (osc.fromBuffer(msg)['address'] === 'SEQ_INFO') {
+                    const divisions = osc.fromBuffer(msg)["args"][1].value;
                     this.setState({
                         qpm: osc.fromBuffer(msg)['args'][0].value,  
-                        divisions: osc.fromBuffer(msg)["args"][1].value,
+                        divisions: divisions,
                         divisor: osc.fromBuffer(msg)["args"][2].value,
                         chords: 'presets',
+                        stepsPerBar: divisions * 4, // calc stepsPerBar according to divisions
                     });
-                    // TODO: check if boolean flag (exp_chords) in Ardour has been set
                     if (osc.fromBuffer(msg)['args'][3].value === true) {   
-                    }
-                    // do not automatically create a new sequence when script in Ardour is run 
-                    // this.generateSequence();  
+                        this.importChords();
+                    } 
+                    this.generateSequence();
                 }
                 // establish connection with Ardour (basic fs check for now)
                 if (osc.fromBuffer(msg)['address'] === 'CONNECT') {
@@ -106,36 +110,108 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
         SOCK.bind(PORT);
     }
 
-    async generateSequence() {
-        this.setState({
-            loading: true
-        });
+    initSequence() {
         /**
          * create empty note sequence as a starter
          */ 
-        // make sure that the sequence has the adequate length
-        let stepsPerQuarter = 4;
-        let stepsPerBar = this.state.stepsPerBar;
-        let totalQuantizedSteps = (this.state.bars * stepsPerBar) * (this.state.divisions/this.state.divisor); 
-        if (this.state.divisor === 3) {
-            stepsPerQuarter = 3;
-            stepsPerBar = this.state.divisions * (4/3) * stepsPerQuarter; // calc from fourths to thirds
-            totalQuantizedSteps = stepsPerBar * this.state.bars; 
-        }
+        const totalQuantizedSteps = this.state.stepsPerBar * this.state.bars;
         const initSeq: INoteSequence = {
-            quantizationInfo: {stepsPerQuarter: stepsPerQuarter}, // steps per quarter set to 4 for now
-            totalQuantizedSteps: totalQuantizedSteps, // use 32 steps = 2 bars for now
+            quantizationInfo: {stepsPerQuarter: this.state.divisor === 3 ? 3 : 4},
+            totalQuantizedSteps: totalQuantizedSteps,
             notes: [],
         }
-        
+        this.setState({
+            noteSequence: initSeq,
+        });
+    }
+
+    importChords() {
+        // import midi file
+        fs.readFile(TEMP_DIR.concat(CHORDS_FILE_ARDOUR), (err, data) => {
+            if (err) throw err;
+            
+            // convert midi data to note sequence
+            const seq = midiToSequenceProto(data);
+            
+            // make sure that there are notes before continuing
+            if (seq.notes.length === 0) {
+                alert('There are no notes in the region provided. Using presets for now.'); 
+                return;
+            } 
+           
+            // quantize sequence
+            const quantSeq = sequences.quantizeNoteSequence(seq, this.state.divisor);
+            const barsProvided = Math.ceil(quantSeq.totalQuantizedSteps / this.state.stepsPerBar);
+            /** 
+             * make sure that the length of the imported chords file is within the binary log (i.e. 1,2,4,8)
+             * restrict chord detection to one bar chunks (might be changed later)
+             */ 
+            const noOfBars = Math.pow(
+                2,
+                Math.ceil(Math.log2(barsProvided))
+            );
+            
+            const chordsDetected: string[] = [];
+            for (let i = 0; i < noOfBars; i++) {
+                // split sequence
+                const barChunk = sequences.trim(quantSeq, this.state.stepsPerBar * i, this.state.stepsPerBar * (i+1));
+                // sort by pitches and map midi pitch to note symbol
+                const noteSymbols = barChunk.notes.sort((a, b) => {
+                    return a.pitch - b.pitch;
+                }).map(note => { return Note.fromMidi(note.pitch) });
+                // check if note symbols can be translated to a chord, otherwise insert 'N.C.'
+                chord(noteSymbols).length === 0
+                    ? chordsDetected.push(constants.NO_CHORD)
+                    : chordsDetected.push(chord(noteSymbols)[0]);
+            }
+
+            // iterate over empty indices ('N.C.') and fill rest of chord prog list
+            for (let i = 0; i < chordsDetected.length; i++) {
+                if (chordsDetected[i] === constants.NO_CHORD) {
+                    chordsDetected[i] = chordsDetected.find(function(el) {
+                        return el !== constants.NO_CHORD;
+                    });
+                }
+            }
+
+            /**
+             * if there is no chord detected, all elements of the array are undefined,
+             * hence just check first element
+             */ 
+            if (chordsDetected[0] === undefined) {
+                alert('No chords detected. Using presets for now.');
+                return;
+            }
+
+            let chordsList = chordsDetected;
+            /**
+             * adjusting length of chords detected to fit 8 bars in total,
+             * simply repeating provided chords for now 
+             */ 
+            for (let i = chordsList.length; i < 8; i *= 2) {
+                chordsList = chordsList.concat(chordsList);
+            }
+
+            this.setState({
+                chordProgression: chordsList,
+            });
+        });
+    }
+
+    async generateSequence() {
+        this.setState({
+            loading: true,
+        });
+        // create empty sequence
+        this.initSequence();
         // create and init magenta model
         this.model = new MusicRNN("https://storage.googleapis.com/magentadata/js/checkpoints/music_rnn/chord_pitches_improv");
         const sequence = 
             await this.model
                 .initialize()
                 .then(() => this.model.continueSequence(
-                    initSeq,
-                    totalQuantizedSteps,
+                    this.state.noteSequence,
+                    this.state.noteSequence.totalQuantizedSteps,
                     this.state.temperature,
                     this.state.chordProgression.slice(0, 2),
                 ));
@@ -143,7 +219,6 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
         this.setState({
           noteSequence: sequence,
           notesCanBePlayed: true,
-          stepsPerBar: stepsPerBar, 
           loading: false,
         });
         // this.model.dispose(); // TODO: check at which point model should be disposed
@@ -214,7 +289,7 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
         this.state.noteSequence.timeSignatures.push({time: 0, numerator: this.state.divisions, denominator: this.state.divisor});
 
         const midi = sequenceProtoToMidi(this.state.noteSequence);
-        fs.writeFileSync(tmpDir.concat(melodyFile), midi);
+        fs.writeFileSync(TEMP_DIR.concat(MELODY_FILE), midi);
     }
 
     render() {
