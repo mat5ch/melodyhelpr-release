@@ -9,7 +9,7 @@ import os from 'os';
 import udp from 'dgram';
 import osc from 'osc-min';
 import { MusicRNN } from '@magenta/music/node/music_rnn';
-import { INoteSequence, NoteSequence } from '@magenta/music/node/protobuf/index';
+import { INoteSequence } from '@magenta/music/node/protobuf/index';
 import { midiToSequenceProto, sequenceProtoToMidi, sequences, constants } from '@magenta/music/node/core';
 import { Chord, Note } from '@tonaljs/tonal';
 import NotePlayer from './noteplayer';
@@ -23,6 +23,9 @@ const MELODY_FILE = '/melody.mid';
 const CHORDS_FILE_ARDOUR = "/chords.mid";
 // standard chord progression
 const CHORDS = ['C', 'G', 'Am', 'F', 'C', 'G', 'Am', 'F'];
+// values according to min/max pitches accepted by improvRNN model
+const MIN_NOTE_PITCH = 48;
+const MAX_NOTE_PITCH = 83;
 
 interface MelodyhelprProps {
     title?: string;
@@ -314,6 +317,8 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
                                 <NotePlayer
                                     play={this.state.notesCanBePlayed}
                                     noteSequence={this.state.noteSequence}
+                                    minNotePitch={MIN_NOTE_PITCH}
+                                    maxNotePitch={MAX_NOTE_PITCH}
                                 >
                                 </NotePlayer>    
                                 </div>
