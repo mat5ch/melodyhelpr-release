@@ -39,7 +39,7 @@ const removeDir = () => {
 const createWindow = () => {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
-    minHeight: 600,
+    minHeight: 700,
     minWidth: 800,
     webPreferences: {
       nodeIntegration: true
@@ -50,7 +50,7 @@ const createWindow = () => {
   mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
 
   // Open the DevTools.
-  mainWindow.webContents.openDevTools();
+  // mainWindow.webContents.openDevTools();
 
   // create tmp folder -> acts as an exchange folder between this app and Ardour
   createDir();

@@ -11,9 +11,7 @@ import osc from 'osc-min';
 import { MusicRNN } from '@magenta/music/node/music_rnn';
 import { INoteSequence, NoteSequence } from '@magenta/music/node/protobuf/index';
 import { midiToSequenceProto, sequenceProtoToMidi, sequences, constants } from '@magenta/music/node/core';
-import { Midi } from '@tonejs/midi';
-import { Note } from 'tonal';
-import { chord } from 'tonal-detect';
+import { Chord, Note } from '@tonaljs/tonal';
 import NotePlayer from './noteplayer';
 import ChordView from './chordview';
 
@@ -144,7 +142,6 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
             const barsProvided = Math.ceil(quantSeq.totalQuantizedSteps / this.state.stepsPerBar);
             /** 
              * make sure that the length of the imported chords file is within the binary log (i.e. 1,2,4,8)
-             * restrict chord detection to one bar chunks (might be changed later)
              */ 
             const noOfBars = Math.pow(
                 2,
@@ -153,16 +150,16 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
             
             const chordsDetected: string[] = [];
             for (let i = 0; i < noOfBars; i++) {
-                // split sequence
+                // split sequence, restrict chord detection to one bar chunks (might be changed later)
                 const barChunk = sequences.trim(quantSeq, this.state.stepsPerBar * i, this.state.stepsPerBar * (i+1));
                 // sort by pitches and map midi pitch to note symbol
                 const noteSymbols = barChunk.notes.sort((a, b) => {
                     return a.pitch - b.pitch;
-                }).map(note => { return Note.fromMidi(note.pitch) });
+                }).map(note => { return Note.fromMidiSharps(note.pitch) });
                 // check if note symbols can be translated to a chord, otherwise insert 'N.C.'
-                chord(noteSymbols).length === 0
+                Chord.detect(noteSymbols).length === 0
                     ? chordsDetected.push(constants.NO_CHORD)
-                    : chordsDetected.push(chord(noteSymbols)[0]);
+                    : chordsDetected.push(Chord.detect(noteSymbols)[0].split(/[/]/)[0]); // get rid of all but the first chord
             }
 
             // iterate over empty indices ('N.C.') and fill rest of chord prog list
