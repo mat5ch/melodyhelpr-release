@@ -9,10 +9,11 @@ import os from 'os';
 import udp from 'dgram';
 import osc from 'osc-min';
 import { MusicRNN } from '@magenta/music/node/music_rnn';
-import { INoteSequence } from '@magenta/music/node/protobuf/index';
+import { INoteSequence, NoteSequence } from '@magenta/music/node/protobuf/index';
 import { midiToSequenceProto, sequenceProtoToMidi, sequences, constants } from '@magenta/music/node/core';
 import { Chord, Note } from '@tonaljs/tonal';
 import NotePlayer from './noteplayer';
+import NoteVisualizer from './notevisualizer';
 import ChordView from './chordview';
 
 const PORT = 7890;
@@ -39,9 +40,10 @@ interface MelodyhelprState {
     stepsPerBar: number; 
     chords: string;
     chordProgression: string[];
+    currentNote: NoteSequence.INote;
     noteSequence: INoteSequence;
-    notesCanBePlayed: boolean;
     loading: boolean;
+    playerIsActive: boolean;
     temperature: number;
 }
 
@@ -58,9 +60,10 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
             stepsPerBar: 16, // => 4 quarters a 4 steps
             chords: 'presets',
             chordProgression: CHORDS,
+            currentNote: {},
             noteSequence: {},
-            notesCanBePlayed: false,
             loading: false,
+            playerIsActive: false,
             temperature: 1.0, // randomness
         };
         this.model = undefined;
@@ -72,6 +75,8 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
         this.doubleSequence = this.doubleSequence.bind(this);
         this.halveSequence = this.halveSequence.bind(this);
         this.transferToArdour = this.transferToArdour.bind(this);
+        this.receiveCurrentNote = this.receiveCurrentNote.bind(this);
+        this.receivePlaybackStatus = this.receivePlaybackStatus.bind(this);
     }
     
     componentDidMount() {
@@ -218,7 +223,6 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
         
         this.setState({
           noteSequence: sequence,
-          notesCanBePlayed: true,
           loading: false,
         });
         // this.model.dispose(); // TODO: check at which point model should be disposed
@@ -292,6 +296,18 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
         fs.writeFileSync(TEMP_DIR.concat(MELODY_FILE), midi);
     }
 
+    receiveCurrentNote(note: NoteSequence.INote) {
+        this.setState({
+            currentNote: note,
+        });
+    }
+
+    receivePlaybackStatus(isPlaying: boolean) {
+        this.setState({
+            playerIsActive: isPlaying,
+        });
+    }
+
     render() {
         return (
             <div className='container'>
@@ -314,13 +330,13 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
                                     <input id='temp-input' type='number' step={0.1} min={0.5} max={2.0} value={this.state.temperature.toFixed(1)} onChange={this.changeTemp}></input>
                                 </div>
                                 <div id='note-player'>
-                                <NotePlayer
-                                    play={this.state.notesCanBePlayed}
+                                <NoteVisualizer
+                                    currentNote={this.state.currentNote}
                                     noteSequence={this.state.noteSequence}
                                     minNotePitch={MIN_NOTE_PITCH}
                                     maxNotePitch={MAX_NOTE_PITCH}
                                 >
-                                </NotePlayer>    
+                                </NoteVisualizer>    
                                 </div>
                                 <div id='chord-list'>
                                 <ChordView chords={this.state.chordProgression.slice(0, this.state.bars)}></ChordView>
@@ -328,14 +344,15 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
                             </div>
                             <div id='button-area' className='card-footer d-flex justify-content-between'>
                                 <div className='footer-left d-flex'>
-                                    <button className='btn btn-outline-secondary' onClick={this.generateSequence} disabled={this.state.loading}>
+                                    <button className='btn btn-outline-secondary' onClick={this.generateSequence} disabled={this.state.loading || this.state.playerIsActive}>
                                         <svg id='lightning-icon' className='bi bi-lightning-fill' width='1.5em' height='1.5em' viewBox='0 0 16 16' fill='currentColor' xmlns='http://www.w3.org/2000/svg'>
                                             <path fillRule='evenodd' d='M11.251.068a.5.5 0 0 1 .227.58L9.677 6.5H13a.5.5 0 0 1 .364.843l-8 8.5a.5.5 0 0 1-.842-.49L6.323 9.5H3a.5.5 0 0 1-.364-.843l8-8.5a.5.5 0 0 1 .615-.09z'/>
                                         </svg>
                                     </button>
-                                    <button className='btn btn-outline-secondary' disabled={this.state.loading || this.state.bars === 2} onClick={this.halveSequence}>:2</button>
-                                    <button className='btn btn-outline-secondary' disabled={this.state.loading || !this.state.notesCanBePlayed || this.state.bars === 8} onClick={this.doubleSequence}>x2</button>
+                                    <button className='btn btn-outline-secondary' disabled={this.state.loading || this.state.bars === 2 || this.state.playerIsActive} onClick={this.halveSequence}>:2</button>
+                                    <button className='btn btn-outline-secondary' disabled={this.state.loading || !this.state.noteSequence.notes || this.state.bars === 8 || this.state.playerIsActive} onClick={this.doubleSequence}>x2</button>
                                 </div>
+                                    <NotePlayer noteSequence={this.state.noteSequence} sendActiveNote={this.receiveCurrentNote} sendPlaybackStatus={this.receivePlaybackStatus}></NotePlayer>
                                 <div className='footer-right d-flex'>
                                     <button className='btn btn-outline-secondary' onClick={this.transferToArdour} disabled={this.state.loading}>Transfer</button> 
                                 </div>

@@ -1,103 +1,78 @@
 import React from 'react';
-import { Player, sequences } from '@magenta/music/node/core';
+import { Player } from '@magenta/music/node/core';
 import { INoteSequence, NoteSequence } from '@magenta/music/node/protobuf/index';
 
 interface NotePlayerProps {
-  noteSequence: INoteSequence;
-  play: boolean;
-  minNotePitch: number;
-  maxNotePitch: number;
+    noteSequence: INoteSequence;
+    sendActiveNote: (note: NoteSequence.INote) => void;
+    sendPlaybackStatus: (isPlaying: boolean) => void;
 }
 
 interface NotePlayerState {
-  isPlaying: boolean;
-  activeNote: NoteSequence.INote;
+    isPlaying: boolean;
 }
 
 class NotePlayer extends React.Component<NotePlayerProps, NotePlayerState> {
-  player: Player | undefined;
-  canvasWidth: number;
-  canvasHeight: number;
-  noteHeight: number;
+    player: Player | undefined;
 
-  constructor(props: NotePlayerProps) {
-    super(props);
-    this.noteHeight = 10;
-    this.canvasWidth = 97.5; // will be translated to percent later
-    this.canvasHeight = (props.maxNotePitch - props.minNotePitch + 1) * this.noteHeight;
-    this.state = {
-      isPlaying: false,
-      activeNote: {},
-    };
-    this.play = this.play.bind(this);
-  }
-
-  componentDidMount() {
-    this.player = new Player(false, {
-      run: note => {
-        this.setState({
-          activeNote: note,
-        });
-      },
-      stop: () => {
-        if (this.player)
-          this.player.start(this.props.noteSequence);
-      }
-    });
-  }
-
-  play() {
-    if (this.player) {
-      if (!this.state.isPlaying) {
-        this.player!.resumeContext();
-        this.player!.start(this.props.noteSequence);
-      } else {
-        this.player.stop();
-      }
-    }
-    this.setState((prevState) => ({
-      isPlaying: !prevState.isPlaying
-    }));
-  }
-  
-  /**
-   * Rendering of notes based on Magenta's PianoRollSVGVisualizer,
-   * see path: @magenta/music/node/core/visualizer
-   * Note: own rendering seems more flexible and suited for usage with React 
-   */ 
-  render() {
-    const color = this.state.isPlaying ? '#f55' : '#aaa';
-    const noteWidth = this.canvasWidth / this.props.noteSequence.totalQuantizedSteps;
-    
-    return <div className='d-flex justify-content-center'>
-      <svg
-        id='note-visualizer'
-        style={{
-          border: `5px solid ${color}`,
-          background: 'black',
-          width: `${this.canvasWidth}%`,
-          height: `${this.canvasHeight}px`,
-        }}
-        onClick={this.play}
-      >
-        {
-          this.props.noteSequence.notes?.map((note, id) => (
-            <rect
-              key={id}
-              x={`${note.quantizedStartStep * noteWidth}%`}
-              y={(this.canvasHeight - this.noteHeight) - ((note.pitch! - this.props.minNotePitch) * this.noteHeight)}
-              width={(note.quantizedEndStep! - note.quantizedStartStep!) * noteWidth * 5}
-              height={this.noteHeight}
-              stroke={'#555'}
-              strokeWidth={'2'}
-              fill={note.quantizedStartStep === this.state.activeNote.startTime! * sequences.stepsPerQuarterToStepsPerSecond(this.props.noteSequence.quantizationInfo.stepsPerQuarter, this.props.noteSequence.tempos[0].qpm)
-                ? 'red' : 'gray'}
-            />
-          ))
+    constructor(props: NotePlayerProps) {
+        super(props);
+        this.state = {
+            isPlaying: false,
         }
-      </svg>
-    </div>;
-  }
+        this.play = this.play.bind(this);
+    }
+
+    componentDidMount() {
+        this.player = new Player(false, {
+            run: note => {
+              // call method in props to notify parent about the current note
+              this.props.sendActiveNote(note);
+            },
+            stop: () => {
+              if (this.player)
+                this.player.start(this.props.noteSequence);
+            }
+        });
+    }
+
+    play() {
+        if (!this.props.noteSequence.notes) {   
+            return;
+        }
+        
+        if (this.player) {
+            if (!this.state.isPlaying) {
+                this.player!.resumeContext();
+                this.player!.start(this.props.noteSequence);
+            } else {
+                this.player.stop();
+            }
+        }
+
+        this.props.sendPlaybackStatus(!this.state.isPlaying);
+        
+        this.setState((prevState) => ({
+            isPlaying: !prevState.isPlaying
+        }));
+    }
+
+    render() {
+        return (    
+            <button id='playStop-btn' className='btn btn-outline-secondary' onClick={this.play}>
+                { !this.state.isPlaying 
+                    ? 
+                    <svg id='play-icon' className='bi bi-play-fill' width='1.5em' height='1.5em' viewBox='0 0 16 16' fill='currentColor' xmlns='http://www.w3.org/2000/svg'>
+                        <path d='M11.596 8.697l-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 0 1 0 1.393z' />
+                    </svg>
+                    :
+                    <svg id='stop-icon' className='bi bi-stop-fill' width='1.5em' height='1.5em' viewBox='0 0 16 16' fill='currentColor' xmlns='http://www.w3.org/2000/svg'>
+                        <path d='M5 3.5h6A1.5 1.5 0 0 1 12.5 5v6a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 11V5A1.5 1.5 0 0 1 5 3.5z'/>
+                    </svg>
+                }
+            </button>
+        )
+    }
 }
 
 export default NotePlayer;
