@@ -1,5 +1,5 @@
-import React, { ReactSVGElement } from 'react';
-import { Player, sequences } from '@magenta/music/node/core';
+import React from 'react';
+import { sequences } from '@magenta/music/node/core';
 import { INoteSequence, NoteSequence } from '@magenta/music/node/protobuf/index';
 
 interface NoteVisualizerProps {
@@ -10,7 +10,6 @@ interface NoteVisualizerProps {
 }
 
 class NoteVisualizer extends React.Component<NoteVisualizerProps> {
-  player: Player | undefined;
   canvasWidth: number;
   canvasHeight: number;
   noteHeight: number;

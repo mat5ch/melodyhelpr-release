@@ -10,9 +10,8 @@ import udp from 'dgram';
 import osc from 'osc-min';
 import { MusicRNN } from '@magenta/music/node/music_rnn';
 import { INoteSequence, NoteSequence } from '@magenta/music/node/protobuf/index';
-import { midiToSequenceProto, sequenceProtoToMidi, sequences, constants } from '@magenta/music/node/core';
+import { midiToSequenceProto, sequenceProtoToMidi, sequences, constants, Player } from '@magenta/music/node/core';
 import { Chord, Note } from '@tonaljs/tonal';
-import NotePlayer from './noteplayer';
 import NoteVisualizer from './notevisualizer';
 import ChordView from './chordview';
 
@@ -43,12 +42,14 @@ interface MelodyhelprState {
     currentNote: NoteSequence.INote;
     noteSequence: INoteSequence;
     loading: boolean;
-    playerIsActive: boolean;
+    playbackTriggered: boolean;
     temperature: number;
 }
 
 class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
     model: MusicRNN | undefined;
+    player: Player | undefined;
+    
     constructor(props: MelodyhelprProps) {
         super(props);
         if (props.title) document.title = props.title;
@@ -63,10 +64,10 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
             currentNote: {},
             noteSequence: {},
             loading: false,
-            playerIsActive: false,
+            playbackTriggered: false,
             temperature: 1.0, // randomness
         };
-        this.model = undefined;
+        // this.model = undefined;
         this.openSocket = this.openSocket.bind(this);
         this.initSequence = this.initSequence.bind(this);
         this.importChords = this.importChords.bind(this);
@@ -75,11 +76,22 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
         this.doubleSequence = this.doubleSequence.bind(this);
         this.halveSequence = this.halveSequence.bind(this);
         this.transferToArdour = this.transferToArdour.bind(this);
-        this.receiveCurrentNote = this.receiveCurrentNote.bind(this);
-        this.receivePlaybackStatus = this.receivePlaybackStatus.bind(this);
+        this.triggerPlayback = this.triggerPlayback.bind(this);
+        this.updateCurrentNote = this.updateCurrentNote.bind(this);
     }
     
     componentDidMount() {
+        this.player =
+            new Player(false, {
+                run: note => {
+                    // notify visualizer about the current note
+                    this.updateCurrentNote(note);
+                },
+                // restart player automatically (subject to change if looping is not wanted)
+                stop: () => {
+                    if (this.player) this.player.start(this.state.noteSequence);
+                }
+            });
         this.openSocket();
     }
     
@@ -296,15 +308,21 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
         fs.writeFileSync(TEMP_DIR.concat(MELODY_FILE), midi);
     }
 
-    receiveCurrentNote(note: NoteSequence.INote) {
-        this.setState({
-            currentNote: note,
-        });
+    triggerPlayback() {     
+        if (this.player.isPlaying()) {
+            this.player.stop();
+        }
+        else {
+            if (this.state.noteSequence.notes) this.player.start(this.state.noteSequence);
+        }
+        this.setState(state => ({
+            playbackTriggered: !state.playbackTriggered
+        }));
     }
 
-    receivePlaybackStatus(isPlaying: boolean) {
+    updateCurrentNote(note: NoteSequence.INote) {
         this.setState({
-            playerIsActive: isPlaying,
+            currentNote: note,
         });
     }
 
@@ -344,15 +362,26 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
                             </div>
                             <div id='button-area' className='card-footer d-flex justify-content-between'>
                                 <div className='footer-left d-flex'>
-                                    <button className='btn btn-outline-secondary' onClick={this.generateSequence} disabled={this.state.loading || this.state.playerIsActive}>
+                                    <button className='btn btn-outline-secondary' onClick={this.generateSequence} disabled={this.state.loading || this.state.playbackTriggered}>
                                         <svg id='lightning-icon' className='bi bi-lightning-fill' width='1.5em' height='1.5em' viewBox='0 0 16 16' fill='currentColor' xmlns='http://www.w3.org/2000/svg'>
                                             <path fillRule='evenodd' d='M11.251.068a.5.5 0 0 1 .227.58L9.677 6.5H13a.5.5 0 0 1 .364.843l-8 8.5a.5.5 0 0 1-.842-.49L6.323 9.5H3a.5.5 0 0 1-.364-.843l8-8.5a.5.5 0 0 1 .615-.09z'/>
                                         </svg>
                                     </button>
-                                    <button className='btn btn-outline-secondary' disabled={this.state.loading || this.state.bars === 2 || this.state.playerIsActive} onClick={this.halveSequence}>:2</button>
-                                    <button className='btn btn-outline-secondary' disabled={this.state.loading || !this.state.noteSequence.notes || this.state.bars === 8 || this.state.playerIsActive} onClick={this.doubleSequence}>x2</button>
+                                    <button className='btn btn-outline-secondary' disabled={this.state.loading || this.state.bars === 2 || this.state.playbackTriggered} onClick={this.halveSequence}>:2</button>
+                                    <button className='btn btn-outline-secondary' disabled={this.state.loading || !this.state.noteSequence.notes || this.state.bars === 8 || this.state.playbackTriggered} onClick={this.doubleSequence}>x2</button>
                                 </div>
-                                    <NotePlayer noteSequence={this.state.noteSequence} sendActiveNote={this.receiveCurrentNote} sendPlaybackStatus={this.receivePlaybackStatus}></NotePlayer>
+                                <button id='playStop-btn' className='btn btn-outline-secondary' disabled={this.state.loading || !this.state.noteSequence.notes} onClick={this.triggerPlayback}>
+                                    {!this.state.playbackTriggered
+                                        ?
+                                        <svg id='play-icon' className='bi bi-play-fill' width='1.5em' height='1.5em' viewBox='0 0 16 16' fill='currentColor' xmlns='http://www.w3.org/2000/svg'>
+                                            <path d='M11.596 8.697l-6.363 3.692c-.54.313-1.233-.066-1.233-.697V4.308c0-.63.692-1.01 1.233-.696l6.363 3.692a.802.802 0 0 1 0 1.393z' />
+                                        </svg>
+                                        :
+                                        <svg id='stop-icon' className='bi bi-stop-fill' width='1.5em' height='1.5em' viewBox='0 0 16 16' fill='currentColor' xmlns='http://www.w3.org/2000/svg'>
+                                            <path d='M5 3.5h6A1.5 1.5 0 0 1 12.5 5v6a1.5 1.5 0 0 1-1.5 1.5H5A1.5 1.5 0 0 1 3.5 11V5A1.5 1.5 0 0 1 5 3.5z' />
+                                        </svg>
+                                    }
+                                </button>
                                 <div className='footer-right d-flex'>
                                     <button className='btn btn-outline-secondary' onClick={this.transferToArdour} disabled={this.state.loading}>Transfer</button> 
                                 </div>
