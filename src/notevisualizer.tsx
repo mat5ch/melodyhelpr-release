@@ -52,7 +52,8 @@ class NoteVisualizer extends React.Component<NoteVisualizerProps> {
               height={this.noteHeight}
               stroke={'#555'}
               strokeWidth={'2'}
-              fill={note.quantizedStartStep === this.props.currentNote.startTime! * sequences.stepsPerQuarterToStepsPerSecond(this.props.noteSequence.quantizationInfo.stepsPerQuarter, this.props.noteSequence.tempos[0].qpm)
+              // fill={note.quantizedStartStep === this.props.currentNote.startTime! * sequences.stepsPerQuarterToStepsPerSecond(this.props.noteSequence.quantizationInfo.stepsPerQuarter, this.props.noteSequence.tempos[0].qpm)
+              fill={(note.quantizedStartStep === this.props.currentNote.quantizedStartStep)
                 ? 'red' : 'gray'}
             />
           ))

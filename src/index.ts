@@ -4,9 +4,10 @@ declare const MAIN_WINDOW_WEBPACK_ENTRY: any;
 // imports
 import fs from 'fs';
 import os from 'os';
+import path from 'path';
 // usr vars
 const HOME_DIR = os.homedir();
-const TEMP_DIR = HOME_DIR.concat('/ardour_electron');
+const TEMP_DIR = path.join(HOME_DIR, 'ardour_electron');
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (require('electron-squirrel-startup')) { // eslint-disable-line global-require
@@ -39,8 +40,10 @@ const removeDir = () => {
 const createWindow = () => {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
-    minHeight: 700,
-    minWidth: 800,
+    height: 750,
+    width: 1000,
+    minHeight: 750,
+    minWidth: 1000,
     webPreferences: {
       nodeIntegration: true
     },
