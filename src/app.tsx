@@ -228,8 +228,8 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
                 const noteSymbols = 
                     barChunk.notes.sort((a, b) => a.pitch - b.pitch)
                     .map(note => { return Note.fromMidiSharps(note.pitch)});
-                // fill respective array with appropriate chord symbols
-                chordsDetected.push(Chord.detect(noteSymbols)[0]); 
+                // fill respective array with appropriate chord symbols, get rid of everything but the first chord info
+                chordsDetected.push(Chord.detect(noteSymbols)[0].split(/[/]/)[0]); 
             }
             // if there is no chord detected, return from function
             if (chordsDetected.length === 0) {
