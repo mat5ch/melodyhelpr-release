@@ -264,7 +264,10 @@ class Melodyhelpr extends React.Component<MelodyhelprProps, MelodyhelprState> {
             // create chord sequence (INoteSequence)
             const chordSeq = this.createChordSequence(notes);
             const scaleDetected = Helpers.findScale(chordSeq)[0];
-            if (!scaleDetected) return;
+            if (!scaleDetected) {
+                alert('Could not detect scale. Using previous one for now.');
+                return;
+            }
             
             this.setState({
                 chordProgression: chordsList,
