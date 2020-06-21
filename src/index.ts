@@ -64,10 +64,13 @@ const createWindow = () => {
 // Some APIs can only be used after this event occurs.
 app.on('ready', createWindow);
 
+// Delete the temp folder before quitting
+app.on('will-quit', () => {
+  removeDir();
+});
+
 // Quit when all windows are closed.
 app.on('window-all-closed', () => {
-  // remove tmp folder
-  removeDir();
   app.quit();
 });
 
