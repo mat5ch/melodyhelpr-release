@@ -17,8 +17,9 @@ npm start
 ```
 
 To connect to Ardour, do the following steps:
-- Copy the two LUA scripts into the scripts folder in the Ardour application directory (use the right version of 'create_melody')
-(e.g. MacOS: /Applications/Ardour5/Contents/Resources/scripts)
+- Copy the two LUA scripts into the scripts folder in the Ardour application directory (check version of 'create_melody')
+  - Linux: /opt/Ardour.../share/scripts
+  - MacOS: /Applications/Ardour5/Contents/Resources/scripts)
 - Register the scripts in an Ardour session:
   - Open up Ardour, goto Menu “Edit”, then select “Lua Scripts“ —> “Script Manager”    
   - Click on tab Action Hooks, New Hook and then select “Check if file exists” script
