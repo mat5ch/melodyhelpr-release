@@ -1,4 +1,4 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, Menu } from 'electron';
 declare const MAIN_WINDOW_WEBPACK_ENTRY: any;
 
 // imports
@@ -49,7 +49,10 @@ const createWindow = () => {
     },
   });
 
-  // and load the index.html of the app.
+  // Define a custom menu.
+  Menu.setApplicationMenu(null);
+
+  // Load the index.html of the app.
   mainWindow.loadURL(MAIN_WINDOW_WEBPACK_ENTRY);
 
   // Open the DevTools.
