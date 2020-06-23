@@ -5,7 +5,7 @@ Creating Melodies with the help of ML (Google Magenta.js)
 
 Clone the repo.
 ```bash
-https://github.com/mat5ch/melodyhelpr-release.git
+git clone https://github.com/mat5ch/melodyhelpr-release.git
 ```
 
 Go into directory.
