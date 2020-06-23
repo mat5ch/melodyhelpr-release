@@ -25,8 +25,7 @@ npm start
 ```
 
 ## Installation and usage
-
-To connect to Ardour, do the following steps:
+### Installation
 - Download and copy the two LUA scripts into the scripts folder in the Ardour application directory
   - Linux: /opt/Ardour.../share/scripts
   - MacOS: /Applications/Ardour5/Contents/Resources/scripts)
@@ -35,7 +34,7 @@ To connect to Ardour, do the following steps:
   - Click on tab Action Hooks, New Hook and then select “Check if file exists” script
   - Hit the tab Action Scripts, click on Add/Set and select the script “Create Melody”
   - Close the Script Manager
-
+### Usage
 - Run the executable of the downloaded app
   - Linux: Open up a terminal, change into downloaded directory and run `./melodyhelpr-release`
 - Open up Ardour 
