@@ -44,4 +44,4 @@ npm start
 
 ## Video
 
-Coming soon.
+[Intro video](https://youtu.be/IH_A7zxy1Yk)
